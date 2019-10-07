@@ -3,8 +3,6 @@
 An [UP board](https://up-board.org/) Ubuntu **real-time** patched kernel (4.4.86).
 
 ## Grab & Go!
-    @dicarlo236 help me a lot.
-
 Here's a compiled image for UP Board. Copy and paste following in your terminal:
 
 ```bash
