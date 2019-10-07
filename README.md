@@ -12,8 +12,9 @@ wget -c "https://github.com/QiayuanLiao/Ubuntu-RT-UP-Board/releases/download/UP-
 You are all set now! For the next step:
 
 1. If you need help to [replace the kernel](#Replace-the-kernel) or [install Ubuntu](#Install-Ubuntu), please follow the link and read on.
-2. Also if you want to [build from source](#Build-from-source), here is the tutorial.
-3. Finally, here's a step by step tutorial to [build from generic kernel](#Build-from-generic-kernel-step-by-step)
+2. To test this kernel please refer to [Configuration and Test](#Configuration-and-Test)
+3. Also if you want to [build from source](#Build-from-source), here is the tutorial.
+4. Finally, here's a step by step tutorial to [build from generic kernel](#Build-from-generic-kernel-step-by-step)
 
 ## Features
 
@@ -26,7 +27,7 @@ You are all set now! For the next step:
   - LEDs
 - Unsupported:
   - HDMI Audio
-
+  - PWM(frequency error)
 ## Help Desk
 
 ### Replace the kernel
