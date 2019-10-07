@@ -3,7 +3,7 @@ An Ubuntu UP board Real time 4.4.86 kernel.
 
 The UP board patches is modify by https://github.com/emutex/meta-up-board/tree/krogoth to work with 4.4.86
 
-## @dicarlo236 help me a lot.
+    @dicarlo236 help me a lot.
 
 Support:
 * GPIO
