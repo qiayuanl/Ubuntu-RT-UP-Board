@@ -1,0 +1,36 @@
+From a53dc7fc9b0a407bae3b1ec045413aa9fbb1ee03 Mon Sep 17 00:00:00 2001
+From: Javier Arteaga <javier@emutex.com>
+Date: Mon, 25 Apr 2016 10:35:25 +0100
+Subject: [PATCH 22/23] x86/up: fix datatypes for >32-bit CPLD registers
+
+Some lines weren't updated to support CPLD registers over 32bits.
+This prevented the LEDs from working on DVT.
+
+Signed-off-by: Javier Arteaga <javier@emutex.com>
+---
+ drivers/platform/x86/up_board_pinctrl.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/platform/x86/up_board_pinctrl.c b/drivers/platform/x86/up_board_pinctrl.c
+index e2c0f16..be0e5f8 100644
+--- a/drivers/platform/x86/up_board_pinctrl.c
++++ b/drivers/platform/x86/up_board_pinctrl.c
+@@ -544,12 +544,12 @@ static int cpld_configure(struct up_cpld_info *cpld)
+ static int cpld_set_value(struct up_cpld_info *cpld, unsigned int offset,
+ 			  int value)
+ {
+-	u32 old_regval = cpld->dir_reg;
++	u64 old_regval = cpld->dir_reg;
+ 
+ 	if (value)
+-		cpld->dir_reg |= 1 << offset;
++		cpld->dir_reg |= 1ULL << offset;
+ 	else
+-		cpld->dir_reg &= ~(1 << offset);
++		cpld->dir_reg &= ~(1ULL << offset);
+ 
+ 	if (cpld->dir_reg != old_regval)
+ 		return cpld_configure(cpld);
+-- 
+2.8.0
+

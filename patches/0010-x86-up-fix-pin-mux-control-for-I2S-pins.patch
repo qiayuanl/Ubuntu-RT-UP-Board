@@ -1,0 +1,188 @@
+From c301386e039bb351f70338affcca4517b7deff64 Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Fri, 29 Jan 2016 11:31:23 +0000
+Subject: [PATCH 10/23] x86/up: fix pin mux control for I2S pins
+
+The I2S bus pins are currently routed through a low-speed open-drain
+level shifter on UP v0.2, but need to routed through high-speed
+push-pull buffers instead for correct operation.
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/platform/x86/up_board_pinctrl.c | 120 ++++++++++++++++----------------
+ 1 file changed, 61 insertions(+), 59 deletions(-)
+
+diff --git a/drivers/platform/x86/up_board_pinctrl.c b/drivers/platform/x86/up_board_pinctrl.c
+index 20c5964..449bd81 100644
+--- a/drivers/platform/x86/up_board_pinctrl.c
++++ b/drivers/platform/x86/up_board_pinctrl.c
+@@ -69,6 +69,7 @@ struct up_pin_info {
+ 	int dir_gpio;
+ 	int func_dir;
+ 	int mux_gpio;
++	int func_mux;
+ 	bool func_sel;
+ };
+ 
+@@ -100,13 +101,14 @@ static struct up_soc_gpiochip_info chip_cht_N  = { .name = "INT33FF:01" };
+ static struct up_soc_gpiochip_info chip_cht_E  = { .name = "INT33FF:02" };
+ static struct up_soc_gpiochip_info chip_cht_SE = { .name = "INT33FF:03" };
+ 
+-#define GPIO_PIN(c, o, d, f, m)	\
++#define GPIO_PIN(c, o, d, f, m, x)	\
+ 	{				\
+ 		.soc_gpio.ci = (c),	\
+ 		.soc_gpio.offset = (o),	\
+ 		.dir_gpio = (d),	\
+ 		.func_dir = (f),	\
+ 		.mux_gpio = (m),	\
++		.func_mux = (x),	\
+ 		.func_sel = false,	\
+ 	}
+ 
+@@ -145,68 +147,68 @@ static struct up_soc_gpiochip_info chip_cht_SE = { .name = "INT33FF:03" };
+  */
+ /* UP Board v0.1 uses auto-sensing level shifters on each pin */
+ static struct up_pin_info up_pins_v0_1[N_GPIO] = {
+-	GPIO_PIN(&chip_cht_SW, 33, -1, DIR_NONE, -1), /*  0 */
+-	GPIO_PIN(&chip_cht_SW, 37, -1, DIR_NONE, -1), /*  1 */
+-	GPIO_PIN(&chip_cht_SW, 32, -1, DIR_NONE, -1), /*  2 */
+-	GPIO_PIN(&chip_cht_SW, 35, -1, DIR_NONE, -1), /*  3 */
+-	GPIO_PIN(&chip_cht_SE,  7, -1, DIR_NONE, -1), /*  4 */
+-	GPIO_PIN(&chip_cht_SE,  4, -1, DIR_NONE, -1), /*  5 */
+-	GPIO_PIN(&chip_cht_SE,  3, -1, DIR_NONE, -1), /*  6 */
+-	GPIO_PIN(&chip_cht_N,  41, -1, DIR_NONE, -1), /*  7 */
+-	GPIO_PIN(&chip_cht_N,  36, -1, DIR_NONE, -1), /*  8 */
+-	GPIO_PIN(&chip_cht_E,  17, -1, DIR_NONE, -1), /*  9 */
+-	GPIO_PIN(&chip_cht_E,  23, -1, DIR_NONE, -1), /* 10 */
+-	GPIO_PIN(&chip_cht_E,  14, -1, DIR_NONE, -1), /* 11 */
+-	GPIO_PIN(&chip_cht_SE,  1, -1, DIR_NONE, -1), /* 12 */
+-	GPIO_PIN(&chip_cht_SE,  5, -1, DIR_NONE, -1), /* 13 */
+-	GPIO_PIN(&chip_cht_SW, 13, -1, DIR_NONE, -1), /* 14 */
+-	GPIO_PIN(&chip_cht_SW,  9, -1, DIR_NONE, -1), /* 15 */
+-	GPIO_PIN(&chip_cht_N,   6, -1, DIR_NONE, -1), /* 16 */
+-	GPIO_PIN(&chip_cht_SE,  6, -1, DIR_NONE, -1), /* 17 */
+-	GPIO_PIN(&chip_cht_SW, 17, -1, DIR_NONE, -1), /* 18 */
+-	GPIO_PIN(&chip_cht_SW, 21, -1, DIR_NONE, -1), /* 19 */
+-	GPIO_PIN(&chip_cht_SW, 19, -1, DIR_NONE, -1), /* 20 */
+-	GPIO_PIN(&chip_cht_SW, 16, -1, DIR_NONE, -1), /* 21 */
+-	GPIO_PIN(&chip_cht_N,   3, -1, DIR_NONE, -1), /* 22 */
+-	GPIO_PIN(&chip_cht_N,   2, -1, DIR_NONE, -1), /* 23 */
+-	GPIO_PIN(&chip_cht_N,   1, -1, DIR_NONE, -1), /* 24 */
+-	GPIO_PIN(&chip_cht_SW, 14, -1, DIR_NONE, -1), /* 25 */
+-	GPIO_PIN(&chip_cht_N,   7, -1, DIR_NONE, -1), /* 26 */
+-	GPIO_PIN(&chip_cht_SW, 10, -1, DIR_NONE, -1), /* 27 */
++	GPIO_PIN(&chip_cht_SW, 33, -1, DIR_NONE, -1, -1), /*  0 */
++	GPIO_PIN(&chip_cht_SW, 37, -1, DIR_NONE, -1, -1), /*  1 */
++	GPIO_PIN(&chip_cht_SW, 32, -1, DIR_NONE, -1, -1), /*  2 */
++	GPIO_PIN(&chip_cht_SW, 35, -1, DIR_NONE, -1, -1), /*  3 */
++	GPIO_PIN(&chip_cht_SE,  7, -1, DIR_NONE, -1, -1), /*  4 */
++	GPIO_PIN(&chip_cht_SE,  4, -1, DIR_NONE, -1, -1), /*  5 */
++	GPIO_PIN(&chip_cht_SE,  3, -1, DIR_NONE, -1, -1), /*  6 */
++	GPIO_PIN(&chip_cht_N,  41, -1, DIR_NONE, -1, -1), /*  7 */
++	GPIO_PIN(&chip_cht_N,  36, -1, DIR_NONE, -1, -1), /*  8 */
++	GPIO_PIN(&chip_cht_E,  17, -1, DIR_NONE, -1, -1), /*  9 */
++	GPIO_PIN(&chip_cht_E,  23, -1, DIR_NONE, -1, -1), /* 10 */
++	GPIO_PIN(&chip_cht_E,  14, -1, DIR_NONE, -1, -1), /* 11 */
++	GPIO_PIN(&chip_cht_SE,  1, -1, DIR_NONE, -1, -1), /* 12 */
++	GPIO_PIN(&chip_cht_SE,  5, -1, DIR_NONE, -1, -1), /* 13 */
++	GPIO_PIN(&chip_cht_SW, 13, -1, DIR_NONE, -1, -1), /* 14 */
++	GPIO_PIN(&chip_cht_SW,  9, -1, DIR_NONE, -1, -1), /* 15 */
++	GPIO_PIN(&chip_cht_N,   6, -1, DIR_NONE, -1, -1), /* 16 */
++	GPIO_PIN(&chip_cht_SE,  6, -1, DIR_NONE, -1, -1), /* 17 */
++	GPIO_PIN(&chip_cht_SW, 17, -1, DIR_NONE, -1, -1), /* 18 */
++	GPIO_PIN(&chip_cht_SW, 21, -1, DIR_NONE, -1, -1), /* 19 */
++	GPIO_PIN(&chip_cht_SW, 19, -1, DIR_NONE, -1, -1), /* 20 */
++	GPIO_PIN(&chip_cht_SW, 16, -1, DIR_NONE, -1, -1), /* 21 */
++	GPIO_PIN(&chip_cht_N,   3, -1, DIR_NONE, -1, -1), /* 22 */
++	GPIO_PIN(&chip_cht_N,   2, -1, DIR_NONE, -1, -1), /* 23 */
++	GPIO_PIN(&chip_cht_N,   1, -1, DIR_NONE, -1, -1), /* 24 */
++	GPIO_PIN(&chip_cht_SW, 14, -1, DIR_NONE, -1, -1), /* 25 */
++	GPIO_PIN(&chip_cht_N,   7, -1, DIR_NONE, -1, -1), /* 26 */
++	GPIO_PIN(&chip_cht_SW, 10, -1, DIR_NONE, -1, -1), /* 27 */
+ };
+ 
+ /* UP Board v0.2 uses GPIO-controlled buffers and mux switches
+  * to provide better current source/sink capability on the I/O pins
+  */
+ static struct up_pin_info up_pins_v0_2[N_GPIO] = {
+-	GPIO_PIN(&chip_cht_SW, 33, 57, DIR_OUT,  53), /*  0 */
+-	GPIO_PIN(&chip_cht_SW, 37, 59, DIR_OUT,  53), /*  1 */
+-	GPIO_PIN(&chip_cht_SW, 32, 56, DIR_OUT,  54), /*  2 */
+-	GPIO_PIN(&chip_cht_SW, 35, 58, DIR_OUT,  54), /*  3 */
+-	GPIO_PIN(&chip_cht_E,  18, 32, DIR_NONE, -1), /*  4 */
+-	GPIO_PIN(&chip_cht_E,  21, 36, DIR_NONE, -1), /*  5 */
+-	GPIO_PIN(&chip_cht_E,  12, 37, DIR_NONE, -1), /*  6 */
+-	GPIO_PIN(&chip_cht_SE, 48, 47, DIR_NONE, -1), /*  7 */
+-	GPIO_PIN(&chip_cht_SE,  7, 46, DIR_OUT,  -1), /*  8 */
+-	GPIO_PIN(&chip_cht_SE,  3, 45, DIR_IN,   -1), /*  9 */
+-	GPIO_PIN(&chip_cht_SE,  6, 44, DIR_OUT,  -1), /* 10 */
+-	GPIO_PIN(&chip_cht_SE,  4, 43, DIR_OUT,  -1), /* 11 */
+-	GPIO_PIN(&chip_cht_SE,  5, 48, DIR_OUT,  -1), /* 12 */
+-	GPIO_PIN(&chip_cht_SE,  1, 49, DIR_OUT,  -1), /* 13 */
+-	GPIO_PIN(&chip_cht_SW, 13, 50, DIR_OUT,  -1), /* 14 */
+-	GPIO_PIN(&chip_cht_SW,  9, 51, DIR_IN,   -1), /* 15 */
+-	GPIO_PIN(&chip_cht_N,   6, 42, DIR_NONE, -1), /* 16 */
+-	GPIO_PIN(&chip_cht_E,  15, 33, DIR_NONE, -1), /* 17 */
+-	GPIO_PIN(&chip_cht_SW, 17, 63, DIR_OUT,  55), /* 18 */
+-	GPIO_PIN(&chip_cht_SW, 21, 62, DIR_OUT,  55), /* 19 */
+-	GPIO_PIN(&chip_cht_SW, 19, 61, DIR_OUT,  55), /* 20 */
+-	GPIO_PIN(&chip_cht_SW, 16, 60, DIR_OUT,  55), /* 21 */
+-	GPIO_PIN(&chip_cht_N,   3, 35, DIR_NONE, -1), /* 22 */
+-	GPIO_PIN(&chip_cht_N,   2, 39, DIR_NONE, -1), /* 23 */
+-	GPIO_PIN(&chip_cht_N,   1, 40, DIR_NONE, -1), /* 24 */
+-	GPIO_PIN(&chip_cht_SW, 14, 41, DIR_OUT,  -1), /* 25 */
+-	GPIO_PIN(&chip_cht_N,   7, 38, DIR_NONE, -1), /* 26 */
+-	GPIO_PIN(&chip_cht_SW, 10, 34, DIR_IN,   -1), /* 27 */
++	GPIO_PIN(&chip_cht_SW, 33, 57, DIR_OUT,  53, MUX_FUNC), /*  0 */
++	GPIO_PIN(&chip_cht_SW, 37, 59, DIR_OUT,  53, MUX_FUNC), /*  1 */
++	GPIO_PIN(&chip_cht_SW, 32, 56, DIR_OUT,  54, MUX_FUNC), /*  2 */
++	GPIO_PIN(&chip_cht_SW, 35, 58, DIR_OUT,  54, MUX_FUNC), /*  3 */
++	GPIO_PIN(&chip_cht_E,  18, 32, DIR_NONE, -1, -1),       /*  4 */
++	GPIO_PIN(&chip_cht_E,  21, 36, DIR_NONE, -1, -1),       /*  5 */
++	GPIO_PIN(&chip_cht_E,  12, 37, DIR_NONE, -1, -1),       /*  6 */
++	GPIO_PIN(&chip_cht_SE, 48, 47, DIR_NONE, -1, -1),       /*  7 */
++	GPIO_PIN(&chip_cht_SE,  7, 46, DIR_OUT,  -1, -1),       /*  8 */
++	GPIO_PIN(&chip_cht_SE,  3, 45, DIR_IN,   -1, -1),       /*  9 */
++	GPIO_PIN(&chip_cht_SE,  6, 44, DIR_OUT,  -1, -1),       /* 10 */
++	GPIO_PIN(&chip_cht_SE,  4, 43, DIR_OUT,  -1, -1),       /* 11 */
++	GPIO_PIN(&chip_cht_SE,  5, 48, DIR_OUT,  -1, -1),       /* 12 */
++	GPIO_PIN(&chip_cht_SE,  1, 49, DIR_OUT,  -1, -1),       /* 13 */
++	GPIO_PIN(&chip_cht_SW, 13, 50, DIR_OUT,  -1, -1),       /* 14 */
++	GPIO_PIN(&chip_cht_SW,  9, 51, DIR_IN,   -1, -1),       /* 15 */
++	GPIO_PIN(&chip_cht_N,   6, 42, DIR_NONE, -1, -1),       /* 16 */
++	GPIO_PIN(&chip_cht_E,  15, 33, DIR_NONE, -1, -1),       /* 17 */
++	GPIO_PIN(&chip_cht_SW, 17, 63, DIR_OUT,  55, MUX_GPIO), /* 18 */
++	GPIO_PIN(&chip_cht_SW, 21, 62, DIR_OUT,  55, MUX_GPIO), /* 19 */
++	GPIO_PIN(&chip_cht_SW, 19, 61, DIR_IN,   55, MUX_GPIO), /* 20 */
++	GPIO_PIN(&chip_cht_SW, 16, 60, DIR_OUT,  55, MUX_GPIO), /* 21 */
++	GPIO_PIN(&chip_cht_N,   3, 35, DIR_NONE, -1, -1),       /* 22 */
++	GPIO_PIN(&chip_cht_N,   2, 39, DIR_NONE, -1, -1),       /* 23 */
++	GPIO_PIN(&chip_cht_N,   1, 40, DIR_NONE, -1, -1),       /* 24 */
++	GPIO_PIN(&chip_cht_SW, 14, 41, DIR_OUT,  -1, -1),       /* 25 */
++	GPIO_PIN(&chip_cht_N,   7, 38, DIR_NONE, -1, -1),       /* 26 */
++	GPIO_PIN(&chip_cht_SW, 10, 34, DIR_IN,   -1, -1),       /* 27 */
+ };
+ 
+ /* The layout and numbering is designed to emulate the Raspberry Pi 2 */
+@@ -516,7 +518,7 @@ static int up_pinmux_set_mux(struct pinctrl_dev *pctldev, unsigned function,
+ 		if (gpio_is_valid(pin->dir_gpio) && (pin->func_dir != DIR_NONE))
+ 			gpio_set_value_cansleep(pin->dir_gpio, pin->func_dir);
+ 		if (gpio_is_valid(pin->mux_gpio))
+-			gpio_set_value_cansleep(pin->mux_gpio, MUX_FUNC);
++			gpio_set_value_cansleep(pin->mux_gpio, pin->func_mux);
+ 		pin->func_sel = true;
+ 	}
+ 
+@@ -564,7 +566,7 @@ static void up_gpio_disable_free(struct pinctrl_dev *pctldev,
+ 	if (gpio_is_valid(pin->dir_gpio) && pin->func_sel)
+ 		gpio_set_value_cansleep(pin->dir_gpio, pin->func_dir);
+ 	if (gpio_is_valid(pin->mux_gpio))
+-		gpio_set_value_cansleep(pin->mux_gpio, MUX_FUNC);
++		gpio_set_value_cansleep(pin->mux_gpio, pin->func_mux);
+ }
+ 
+ static const struct pinmux_ops up_pinmux_ops = {
+-- 
+2.8.0
+

@@ -1,0 +1,46 @@
+From 1779d4c511ee3bbc1a4d893a5ab6602619da5c7e Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Mon, 18 Apr 2016 10:07:05 +0100
+Subject: [PATCH 20/23] x86: up: adding dmi match for V0.3 board version
+
+The UP gpio/pinctrl driver wasn't loading correctly on
+EVT3 hardware revisions with the latest BIOS version due
+a change in the DMI board_version
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/platform/x86/up_board_pinctrl.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/platform/x86/up_board_pinctrl.c b/drivers/platform/x86/up_board_pinctrl.c
+index 40be0a5..fad5bb9 100644
+--- a/drivers/platform/x86/up_board_pinctrl.c
++++ b/drivers/platform/x86/up_board_pinctrl.c
+@@ -921,6 +921,9 @@ static struct pinctrl_desc up_pinctrl_desc = {
+ 
+ static const struct dmi_system_id up_board_id_table[] = {
+ 	{
++		/* TODO - remove when new BIOS is available with
++		 * correct board version numbering
++		 */
+ 		.matches = {
+ 			DMI_MATCH(DMI_SYS_VENDOR, "AAEON"),
+ 			DMI_MATCH(DMI_BOARD_NAME, "UP-CHT01"),
+@@ -932,6 +935,14 @@ static const struct dmi_system_id up_board_id_table[] = {
+ 		.matches = {
+ 			DMI_MATCH(DMI_SYS_VENDOR, "AAEON"),
+ 			DMI_MATCH(DMI_BOARD_NAME, "UP-CHT01"),
++			DMI_MATCH(DMI_BOARD_VERSION, "V0.3"),
++		},
++		.driver_data = (void *)&up_board_info_v0_3
++	},
++	{
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "AAEON"),
++			DMI_MATCH(DMI_BOARD_NAME, "UP-CHT01"),
+ 			DMI_MATCH(DMI_BOARD_VERSION, "V0.2"),
+ 		},
+ 		.driver_data = (void *)&up_board_info_v0_2
+-- 
+2.8.0
+

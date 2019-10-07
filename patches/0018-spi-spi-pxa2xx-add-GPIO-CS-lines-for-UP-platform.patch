@@ -1,0 +1,123 @@
+From 06fd6fd511b7a43266b718cbdf822da6a4ab4f99 Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Wed, 16 Mar 2016 17:36:42 +0000
+Subject: [PATCH 18/23] spi: spi-pxa2xx: add GPIO CS lines for UP platform
+
+The PXA2xx SPI controller on Intel X5-Z83xx SoC provides a
+single hardware-controlled chip-select signal.  The UP board
+platform requires the provision of a 2nd chip-select, using
+GPIO, for application and peripheral compatibility.
+
+This patch adds an option to define an arbitrary number of
+GPIO-based chip-selects per platform based on DMI ID matching.
+
+There is already some support for this in the SPI core via
+device-tree configuration, and this is utilised to some extent
+by this patch.  Ultimately, it would be better if we could avail
+of this more fully by passing the same information via
+ACPI for x86 platforms like the UP board, instead of hard-coding
+it into the PXA2xx driver like this, but that is currently
+not possible on the UP platform.
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/spi/spi-pxa2xx.c       | 40 ++++++++++++++++++++++++++++++++++++++++
+ include/linux/spi/pxa2xx_spi.h |  3 +++
+ 2 files changed, 43 insertions(+)
+
+diff --git a/drivers/spi/spi-pxa2xx.c b/drivers/spi/spi-pxa2xx.c
+index 26884d1..30e772a 100644
+--- a/drivers/spi/spi-pxa2xx.c
++++ b/drivers/spi/spi-pxa2xx.c
+@@ -32,6 +32,7 @@
+ #include <linux/clk.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/acpi.h>
++#include <linux/dmi.h>
+ 
+ #include "spi-pxa2xx.h"
+ 
+@@ -1364,6 +1365,32 @@ static bool pxa2xx_spi_idma_filter(struct dma_chan *chan, void *param)
+ 	return true;
+ }
+ 
++struct pxa2xx_cs_info {
++	u16 num_chipselect;
++	int *cs_gpios;
++};
++
++static int up_cs_gpios[] = {
++	-ENOENT, /* Use hardware CS */
++	7,
++};
++
++static const struct pxa2xx_cs_info up_cs_info = {
++	.num_chipselect = ARRAY_SIZE(up_cs_gpios),
++	.cs_gpios = up_cs_gpios,
++};
++
++static const struct dmi_system_id pxa2xx_dmi_system_ids[] = {
++	{
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "AAEON"),
++			DMI_MATCH(DMI_BOARD_NAME, "UP-CHT01"),
++		},
++		.driver_data = (void *)&up_cs_info,
++	},
++	{ }
++};
++
+ static struct pxa2xx_spi_master *
+ pxa2xx_spi_init_pdata(struct platform_device *pdev)
+ {
+@@ -1373,6 +1400,7 @@ pxa2xx_spi_init_pdata(struct platform_device *pdev)
+ 	struct resource *res;
+ 	const struct acpi_device_id *adev_id = NULL;
+ 	const struct pci_device_id *pcidev_id = NULL;
++	const struct dmi_system_id *system_id;
+ 	int type;
+ 
+ 	adev = ACPI_COMPANION(&pdev->dev);
+@@ -1423,6 +1451,17 @@ pxa2xx_spi_init_pdata(struct platform_device *pdev)
+ 	pdata->num_chipselect = 1;
+ 	pdata->enable_dma = true;
+ 
++	/* On some platforms, it may be necessary to use some GPIO CS lines */
++	system_id = dmi_first_match(pxa2xx_dmi_system_ids);
++	if (system_id) {
++		struct pxa2xx_cs_info *cs_info = system_id->driver_data;
++
++		if (cs_info) {
++			pdata->num_chipselect = cs_info->num_chipselect;
++			pdata->cs_gpios = cs_info->cs_gpios;
++		}
++	}
++
+ 	return pdata;
+ }
+ 
+@@ -1481,6 +1520,7 @@ static int pxa2xx_spi_probe(struct platform_device *pdev)
+ 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_CS_HIGH | SPI_LOOP;
+ 
+ 	master->bus_num = ssp->port_id;
++	master->cs_gpios = platform_info->cs_gpios;
+ 	master->dma_alignment = DMA_ALIGNMENT;
+ 	master->cleanup = cleanup;
+ 	master->setup = setup;
+diff --git a/include/linux/spi/pxa2xx_spi.h b/include/linux/spi/pxa2xx_spi.h
+index 9ec4c14..935a463 100644
+--- a/include/linux/spi/pxa2xx_spi.h
++++ b/include/linux/spi/pxa2xx_spi.h
+@@ -33,6 +33,9 @@ struct pxa2xx_spi_master {
+ 
+ 	/* For non-PXA arches */
+ 	struct ssp_device ssp;
++
++	/* Optional array of GPIOs to use as chip select lines */
++	int *cs_gpios;
+ };
+ 
+ /* spi_board_info.controller_data for SPI slave devices,
+-- 
+2.8.0
+

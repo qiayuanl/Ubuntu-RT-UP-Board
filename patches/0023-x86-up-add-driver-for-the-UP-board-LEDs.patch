@@ -1,0 +1,94 @@
+From 038ab41a90df7effc9f41a56b8aeca8cc63f3053 Mon Sep 17 00:00:00 2001
+From: Javier Arteaga <javier@emutex.com>
+Date: Fri, 22 Apr 2016 16:36:57 +0100
+Subject: [PATCH 23/23] x86/up: add driver for the UP board LEDs
+
+Register class devices to allow userspace control of the LEDs connected
+to the CPLD starting from hardware revision v0.4 (DVT).
+
+The current LEDs are available as:
+	/sys/class/leds/upboard:green:
+	/sys/class/leds/upboard:red:
+	/sys/class/leds/upboard:yellow:
+
+Signed-off-by: Javier Arteaga <javier@emutex.com>
+---
+ drivers/platform/x86/up_board_pinctrl.c | 39 +++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/drivers/platform/x86/up_board_pinctrl.c b/drivers/platform/x86/up_board_pinctrl.c
+index be0e5f8..fdd7fa1 100644
+--- a/drivers/platform/x86/up_board_pinctrl.c
++++ b/drivers/platform/x86/up_board_pinctrl.c
+@@ -19,6 +19,7 @@
+  */
+ #include <linux/gpio.h>
+ #include <linux/kernel.h>
++#include <linux/leds.h>
+ #include <linux/module.h>
+ #include <linux/dmi.h>
+ #include <linux/pinctrl/pinctrl.h>
+@@ -81,6 +82,8 @@ struct up_pin_info {
+ struct up_cpld_led_info {
+ 	unsigned offset;
+ 	const char *name;
++	struct up_cpld_info *cpld;
++	struct led_classdev cdev;
+ };
+ 
+ /* Information for the CPLD featured on later UP board revisions */
+@@ -1000,6 +1003,16 @@ static struct pinctrl_desc up_pinctrl_desc = {
+ 	.owner = THIS_MODULE,
+ };
+ 
++static void up_led_brightness_set(struct led_classdev *cdev,
++				  enum led_brightness value)
++{
++	struct up_cpld_led_info *led = container_of(cdev,
++						    struct up_cpld_led_info,
++						    cdev);
++
++	cpld_set_value(led->cpld, led->offset, value != LED_OFF);
++}
++
+ static const struct dmi_system_id up_board_id_table[] = {
+ 	{
+ 		.matches = {
+@@ -1117,8 +1130,34 @@ static int up_pinctrl_probe(struct platform_device *pdev)
+ 		irq_data->parent_data = irq_get_irq_data(pin->soc_gpio.irq);
+ 	}
+ 
++	/* early versions of the board had no CPLD */
++	if (board->cpld) {
++		struct up_cpld_info *cpld = board->cpld;
++		size_t i;
++
++		for (i = 0; i < cpld->num_leds; i++) {
++			struct up_cpld_led_info *led = &cpld->leds[i];
++
++			led->cpld = cpld;
++			led->cdev.brightness_set = up_led_brightness_set;
++			led->cdev.name = devm_kasprintf(&pdev->dev, GFP_KERNEL,
++							"upboard:%s:",
++							led->name);
++			if (!led->cdev.name) {
++				ret = -ENOMEM;
++				goto fail_cpld_led;
++			}
++
++			ret = devm_led_classdev_register(&pdev->dev,
++							 &led->cdev);
++			if (ret)
++				goto fail_cpld_led;
++		}
++	}
++
+ 	return 0;
+ 
++fail_cpld_led:
+ fail_irqchip_add:
+ fail_add_pin_range:
+ 	gpiochip_remove(&up_pctrl->chip);
+-- 
+2.8.0
+

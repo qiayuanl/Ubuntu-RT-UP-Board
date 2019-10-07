@@ -1,0 +1,141 @@
+From d67b3efefd4e0374e195b538cc91c9b7f5b889f6 Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Fri, 29 Jan 2016 17:03:21 +0000
+Subject: [PATCH 14/23] x86/up: register pinmap config to disable open-drain
+ mode
+
+On the UP board, if the ODEn bit is set on the pad configuration
+it seems to impair some functions on the I/O header such as UART, SPI
+and even I2C.  This commits disables it for all UP board I/O header
+pins by default.
+
+Some cosmetic tidy-up of the pin map code was also included.
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/platform/x86/up_board.c | 100 ++++++++++++++++++++++++++--------------
+ 1 file changed, 66 insertions(+), 34 deletions(-)
+
+diff --git a/drivers/platform/x86/up_board.c b/drivers/platform/x86/up_board.c
+index 9864dd5..8a35da7 100644
+--- a/drivers/platform/x86/up_board.c
++++ b/drivers/platform/x86/up_board.c
+@@ -44,49 +44,81 @@ static bool spidev0 = true;
+ module_param(spidev0, bool, S_IRUGO);
+ MODULE_PARM_DESC(spidev0, "register a spidev device on SPI bus 2-0");
+ 
++/* On the UP board, if the ODEn bit is set on the pad configuration
++ * it seems to impair some functions on the I/O header such as UART, SPI
++ * and even I2C.  So we disable it for all header pins by default.
++ */
++static unsigned long oden_disable_conf[] = {
++	PIN_CONF_PACKED(PIN_CONFIG_DRIVE_PUSH_PULL, 0),
++};
++
++/* On UP v0.2, we need to enable internal pull-ups on the I2C5 bus
++ * to communicate with 2 PCA9555 GPIO expanders connected there
++ */
+ static unsigned long i2c_pullup_conf[] = {
+ 	PIN_CONF_PACKED(PIN_CONFIG_BIAS_PULL_UP, 5000),
+ };
+ 
++#define UP_PIN_MAP_MUX_GROUP(d, p, f) \
++	PIN_MAP_MUX_GROUP_DEFAULT(d, p, f"_grp", f)
++
++#define UP_PIN_MAP_CONF_ODEN(d, p, f) \
++	PIN_MAP_CONFIGS_GROUP_DEFAULT(d, p, f"_grp", oden_disable_conf)
++
++#define UP_PIN_MAP_CONF_I2C5(d, p, f) \
++	PIN_MAP_CONFIGS_GROUP_DEFAULT(d, p, f"_grp", i2c_pullup_conf)
++
+ /* Maps pin functions on UP Board I/O pin header to specific CHT SoC devices */
+ static struct pinctrl_map up_pinmux_maps_v0_1[] __initdata = {
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228A:00", "INT33FF:00", NULL, "uart1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228A:01", "INT33FF:00", NULL, "uart2"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622C1:00", "INT33FF:00", NULL, "i2c0"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622C1:01", "INT33FF:00", NULL, "i2c1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622A8:00", "INT33FF:00", NULL, "lpe"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("80862288:00", "INT33FF:03", NULL, "pwm0"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("80862288:01", "INT33FF:03", NULL, "pwm1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228E:01", "INT33FF:03", NULL, "spi2"),
++	UP_PIN_MAP_MUX_GROUP("8086228A:00", "INT33FF:00", "uart1"),
++	UP_PIN_MAP_MUX_GROUP("8086228A:01", "INT33FF:00", "uart2"),
++	UP_PIN_MAP_MUX_GROUP("808622C1:00", "INT33FF:00", "i2c0"),
++	UP_PIN_MAP_MUX_GROUP("808622C1:01", "INT33FF:00", "i2c1"),
++	UP_PIN_MAP_MUX_GROUP("808622A8:00", "INT33FF:00", "lpe"),
++	UP_PIN_MAP_MUX_GROUP("80862288:00", "INT33FF:03", "pwm0"),
++	UP_PIN_MAP_MUX_GROUP("80862288:01", "INT33FF:03", "pwm1"),
++	UP_PIN_MAP_MUX_GROUP("8086228E:01", "INT33FF:03", "spi2"),
++
++	UP_PIN_MAP_CONF_ODEN("8086228A:00", "INT33FF:00", "uart1"),
++	UP_PIN_MAP_CONF_ODEN("8086228A:01", "INT33FF:00", "uart2"),
++	UP_PIN_MAP_CONF_ODEN("808622C1:00", "INT33FF:00", "i2c0"),
++	UP_PIN_MAP_CONF_ODEN("808622C1:01", "INT33FF:00", "i2c1"),
++	UP_PIN_MAP_CONF_ODEN("808622A8:00", "INT33FF:00", "lpe"),
++	UP_PIN_MAP_CONF_ODEN("80862288:00", "INT33FF:03", "pwm0"),
++	UP_PIN_MAP_CONF_ODEN("80862288:01", "INT33FF:03", "pwm1"),
++	UP_PIN_MAP_CONF_ODEN("8086228E:01", "INT33FF:03", "spi2"),
+ };
+ 
+ static struct pinctrl_map up_pinmux_maps_v0_2[] __initdata = {
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228A:00", "up-pinctrl", NULL, "uart1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228A:01", "up-pinctrl", NULL, "uart2"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622C1:00", "up-pinctrl", NULL, "i2c0"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622C1:01", "up-pinctrl", NULL, "i2c1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622A8:00", "up-pinctrl", NULL, "i2s0"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("80862288:00", "up-pinctrl", NULL, "pwm0"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("80862288:01", "up-pinctrl", NULL, "pwm1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228E:01", "up-pinctrl", NULL, "spi2"),
+-
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228A:00", "INT33FF:00", NULL, "uart1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228A:01", "INT33FF:00", NULL, "uart2"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622C1:00", "INT33FF:00", NULL, "i2c0"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622C1:01", "INT33FF:00", NULL, "i2c1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622A8:00", "INT33FF:00", NULL, "lpe"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("80862288:00", "INT33FF:03", NULL, "pwm0"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("80862288:01", "INT33FF:03", NULL, "pwm1"),
+-	PIN_MAP_MUX_GROUP_DEFAULT("8086228E:01", "INT33FF:03", NULL, "spi2"),
+-
+-	/* Enable the I2C5 bus with internal pull-ups to reach the
+-	 * PCA9555 GPIO expanders on the v0.2 board version
+-	 */
+-	PIN_MAP_MUX_GROUP_DEFAULT("808622C1:05", "INT33FF:00", NULL, "i2c5"),
+-	PIN_MAP_CONFIGS_PIN_DEFAULT("808622C1:05", "INT33FF:00", "I2C5_SCL",
+-				    i2c_pullup_conf),
+-	PIN_MAP_CONFIGS_PIN_DEFAULT("808622C1:05", "INT33FF:00", "I2C5_SDA",
+-				    i2c_pullup_conf),
++	UP_PIN_MAP_MUX_GROUP("8086228A:00", "up-pinctrl", "uart1"),
++	UP_PIN_MAP_MUX_GROUP("8086228A:01", "up-pinctrl", "uart2"),
++	UP_PIN_MAP_MUX_GROUP("808622C1:00", "up-pinctrl", "i2c0"),
++	UP_PIN_MAP_MUX_GROUP("808622C1:01", "up-pinctrl", "i2c1"),
++	UP_PIN_MAP_MUX_GROUP("808622A8:00", "up-pinctrl", "i2s0"),
++	UP_PIN_MAP_MUX_GROUP("80862288:00", "up-pinctrl", "pwm0"),
++	UP_PIN_MAP_MUX_GROUP("80862288:01", "up-pinctrl", "pwm1"),
++	UP_PIN_MAP_MUX_GROUP("8086228E:01", "up-pinctrl", "spi2"),
++
++	UP_PIN_MAP_MUX_GROUP("8086228A:00", "INT33FF:00", "uart1"),
++	UP_PIN_MAP_MUX_GROUP("8086228A:01", "INT33FF:00", "uart2"),
++	UP_PIN_MAP_MUX_GROUP("808622C1:00", "INT33FF:00", "i2c0"),
++	UP_PIN_MAP_MUX_GROUP("808622C1:01", "INT33FF:00", "i2c1"),
++	UP_PIN_MAP_MUX_GROUP("808622A8:00", "INT33FF:00", "lpe"),
++	UP_PIN_MAP_MUX_GROUP("80862288:00", "INT33FF:03", "pwm0"),
++	UP_PIN_MAP_MUX_GROUP("80862288:01", "INT33FF:03", "pwm1"),
++	UP_PIN_MAP_MUX_GROUP("8086228E:01", "INT33FF:03", "spi2"),
++
++	UP_PIN_MAP_CONF_ODEN("8086228A:00", "INT33FF:00", "uart1"),
++	UP_PIN_MAP_CONF_ODEN("8086228A:01", "INT33FF:00", "uart2"),
++	UP_PIN_MAP_CONF_ODEN("808622C1:00", "INT33FF:00", "i2c0"),
++	UP_PIN_MAP_CONF_ODEN("808622C1:01", "INT33FF:00", "i2c1"),
++	UP_PIN_MAP_CONF_ODEN("808622A8:00", "INT33FF:00", "lpe"),
++	UP_PIN_MAP_CONF_ODEN("80862288:00", "INT33FF:03", "pwm0"),
++	UP_PIN_MAP_CONF_ODEN("80862288:01", "INT33FF:03", "pwm1"),
++	UP_PIN_MAP_CONF_ODEN("8086228E:01", "INT33FF:03", "spi2"),
++
++	UP_PIN_MAP_MUX_GROUP("808622C1:05", "INT33FF:00", "i2c5"),
++	UP_PIN_MAP_CONF_I2C5("808622C1:05", "INT33FF:00", "i2c5"),
+ };
+ 
+ static struct platform_device *up_pinctrl_dev;
+-- 
+2.8.0
+

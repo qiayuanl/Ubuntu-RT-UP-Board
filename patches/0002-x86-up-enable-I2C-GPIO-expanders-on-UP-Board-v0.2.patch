@@ -1,0 +1,94 @@
+From 1aba038aca7ec999f90e1fad92318754f41dbc46 Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Wed, 6 Jan 2016 13:49:46 +0000
+Subject: [PATCH 02/23] x86/up: enable I2C GPIO expanders on UP Board v0.2
+
+Register 2 PCA9555 I2C devices on the I2C5 bus, included on the v0.2 version
+of the UP Board.
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/platform/x86/up_board.c | 49 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+
+diff --git a/drivers/platform/x86/up_board.c b/drivers/platform/x86/up_board.c
+index 3cd8d0f..1823631 100644
+--- a/drivers/platform/x86/up_board.c
++++ b/drivers/platform/x86/up_board.c
+@@ -20,6 +20,17 @@
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/pinctrl/machine.h>
++#include <linux/pinctrl/pinconf-generic.h>
++#include <linux/i2c.h>
++#include <linux/platform_data/pca953x.h>
++
++#define UP_BOARD_GPIO_EXP_I2C_BUS 5
++#define UP_BOARD_GPIO_EXP0_BASE   32
++#define UP_BOARD_GPIO_EXP1_BASE   48
++
++static unsigned long i2c_pullup_conf[] = {
++	PIN_CONF_PACKED(PIN_CONFIG_BIAS_PULL_UP, 5000),
++};
+ 
+ /* Maps pin functions on UP Board I/O pin header to specific CHT SoC devices */
+ static struct pinctrl_map pinmux_map[] __initdata = {
+@@ -31,10 +42,38 @@ static struct pinctrl_map pinmux_map[] __initdata = {
+ 	PIN_MAP_MUX_GROUP_DEFAULT("80862288:00", "INT33FF:03", NULL, "pwm0"),
+ 	PIN_MAP_MUX_GROUP_DEFAULT("80862289:00", "INT33FF:03", NULL, "pwm1"),
+ 	PIN_MAP_MUX_GROUP_DEFAULT("8086228E:01", "INT33FF:03", NULL, "spi2"),
++
++	/* Enable the I2C5 bus with internal pull-ups to reach the
++	 * PCA9555 GPIO expanders on the EVT2 board
++	 */
++	PIN_MAP_MUX_GROUP_DEFAULT("808622C1:05", "INT33FF:00", NULL, "i2c5"),
++	PIN_MAP_CONFIGS_PIN_DEFAULT("808622C1:05", "INT33FF:00", "I2C5_SCL",
++				    i2c_pullup_conf),
++	PIN_MAP_CONFIGS_PIN_DEFAULT("808622C1:05", "INT33FF:00", "I2C5_SDA",
++				    i2c_pullup_conf),
+ };
+ 
+ static struct platform_device *up_gpio_dev;
+ 
++static struct pca953x_platform_data gpio_exp0_pdata = {
++	.gpio_base = UP_BOARD_GPIO_EXP0_BASE,
++};
++
++static struct pca953x_platform_data gpio_exp1_pdata = {
++	.gpio_base = UP_BOARD_GPIO_EXP1_BASE,
++};
++
++static struct i2c_board_info gpio_exp_board_info[] __initdata = {
++	{
++		I2C_BOARD_INFO("pca9555", 0x24),
++		.platform_data = &gpio_exp0_pdata,
++	},
++	{
++		I2C_BOARD_INFO("pca9555", 0x23),
++		.platform_data = &gpio_exp1_pdata,
++	},
++};
++
+ static int __init
+ up_board_init(void)
+ {
+@@ -49,6 +88,16 @@ up_board_init(void)
+ 		goto fail_pinctrl_reg;
+ 	}
+ 
++	/* Register the I2C GPIO expanders on the EVT2 board
++	 *
++	 * TODO - this code should be in an EVT2-specific block
++	 * Refactor this once the DMI board name has been updated for EVT2
++	 * so that we can detect which board we're running on
++	 */
++	i2c_register_board_info(UP_BOARD_GPIO_EXP_I2C_BUS,
++				gpio_exp_board_info,
++				ARRAY_SIZE(gpio_exp_board_info));
++
+ 	/* Create a virtual device to manage the UP Board GPIO pin header */
+ 	up_gpio_dev = platform_device_alloc("up-gpio", -1);
+ 	if (!up_gpio_dev) {
+-- 
+2.8.0
+

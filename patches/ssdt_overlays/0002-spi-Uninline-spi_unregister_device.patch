@@ -1,0 +1,61 @@
+From 738bc1053491db595cd6e63b94a4f4d84c5ca31c Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert+renesas@glider.be>
+Date: Mon, 30 Nov 2015 15:28:06 +0100
+Subject: [PATCH 01/11] spi: Uninline spi_unregister_device()
+
+Uninline spi_unregister_device() in preparation of adding more code to
+it. Add kerneldoc documentation while we're at it.
+
+Signed-off-by: Geert Uytterhoeven <geert+renesas@glider.be>
+Signed-off-by: Mark Brown <broonie@kernel.org>
+---
+ drivers/spi/spi.c       | 14 ++++++++++++++
+ include/linux/spi/spi.h |  7 +------
+ 2 files changed, 15 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/spi/spi.c b/drivers/spi/spi.c
+index dee1cb8..2ccb760 100644
+--- a/drivers/spi/spi.c
++++ b/drivers/spi/spi.c
+@@ -605,6 +605,20 @@ struct spi_device *spi_new_device(struct spi_master *master,
+ }
+ EXPORT_SYMBOL_GPL(spi_new_device);
+ 
++/**
++ * spi_unregister_device - unregister a single SPI device
++ * @spi: spi_device to unregister
++ *
++ * Start making the passed SPI device vanish. Normally this would be handled
++ * by spi_unregister_master().
++ */
++void spi_unregister_device(struct spi_device *spi)
++{
++	if (spi)
++		device_unregister(&spi->dev);
++}
++EXPORT_SYMBOL_GPL(spi_unregister_device);
++
+ static void spi_match_master_to_boardinfo(struct spi_master *master,
+ 				struct spi_board_info *bi)
+ {
+diff --git a/include/linux/spi/spi.h b/include/linux/spi/spi.h
+index cce80e6..075bede 100644
+--- a/include/linux/spi/spi.h
++++ b/include/linux/spi/spi.h
+@@ -1115,12 +1115,7 @@ spi_add_device(struct spi_device *spi);
+ extern struct spi_device *
+ spi_new_device(struct spi_master *, struct spi_board_info *);
+ 
+-static inline void
+-spi_unregister_device(struct spi_device *spi)
+-{
+-	if (spi)
+-		device_unregister(&spi->dev);
+-}
++extern void spi_unregister_device(struct spi_device *spi);
+ 
+ extern const struct spi_device_id *
+ spi_get_device_id(const struct spi_device *sdev);
+-- 
+2.1.4
+

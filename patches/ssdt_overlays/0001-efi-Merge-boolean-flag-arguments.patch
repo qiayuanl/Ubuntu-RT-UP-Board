@@ -1,0 +1,144 @@
+From 1cfd63166c8e7494a1b457df9bb291a601091c26 Mon Sep 17 00:00:00 2001
+From: Julia Lawall <Julia.Lawall@lip6.fr>
+Date: Fri, 6 May 2016 22:39:30 +0100
+Subject: [PATCH] efi: Merge boolean flag arguments
+
+The parameters atomic and duplicates of efivar_init always have opposite
+values.  Drop the parameter atomic, replace the uses of !atomic with
+duplicates, and update the call sites accordingly.
+
+The code using duplicates is slightly reorganized with an 'else', to avoid
+duplicating the lock code.
+
+Signed-off-by: Julia Lawall <Julia.Lawall@lip6.fr>
+Signed-off-by: Matt Fleming <matt@codeblueprint.co.uk>
+Cc: Andy Lutomirski <luto@amacapital.net>
+Cc: Ard Biesheuvel <ard.biesheuvel@linaro.org>
+Cc: Borislav Petkov <bp@alien8.de>
+Cc: Brian Gerst <brgerst@gmail.com>
+Cc: Denys Vlasenko <dvlasenk@redhat.com>
+Cc: H. Peter Anvin <hpa@zytor.com>
+Cc: Jeremy Kerr <jk@ozlabs.org>
+Cc: Linus Torvalds <torvalds@linux-foundation.org>
+Cc: Matthew Garrett <mjg59@srcf.ucam.org>
+Cc: Peter Zijlstra <peterz@infradead.org>
+Cc: Saurabh Sengar <saurabh.truth@gmail.com>
+Cc: Thomas Gleixner <tglx@linutronix.de>
+Cc: Vaishali Thakkar <vaishali.thakkar@oracle.com>
+Cc: linux-efi@vger.kernel.org
+Link: http://lkml.kernel.org/r/1462570771-13324-5-git-send-email-matt@codeblueprint.co.uk
+Signed-off-by: Ingo Molnar <mingo@kernel.org>
+---
+ drivers/firmware/efi/efivars.c |  5 ++---
+ drivers/firmware/efi/vars.c    | 23 ++++++++++-------------
+ fs/efivarfs/super.c            |  3 +--
+ include/linux/efi.h            |  3 +--
+ 4 files changed, 14 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/firmware/efi/efivars.c b/drivers/firmware/efi/efivars.c
+index 096adcb..116b244 100644
+--- a/drivers/firmware/efi/efivars.c
++++ b/drivers/firmware/efi/efivars.c
+@@ -661,7 +661,7 @@ static void efivar_update_sysfs_entries(struct work_struct *work)
+ 			return;
+ 
+ 		err = efivar_init(efivar_update_sysfs_entry, entry,
+-				  true, false, &efivar_sysfs_list);
++				  false, &efivar_sysfs_list);
+ 		if (!err)
+ 			break;
+ 
+@@ -730,8 +730,7 @@ int efivars_sysfs_init(void)
+ 		return -ENOMEM;
+ 	}
+ 
+-	efivar_init(efivars_sysfs_callback, NULL, false,
+-		    true, &efivar_sysfs_list);
++	efivar_init(efivars_sysfs_callback, NULL, true, &efivar_sysfs_list);
+ 
+ 	error = create_efivars_bin_attributes();
+ 	if (error) {
+diff --git a/drivers/firmware/efi/vars.c b/drivers/firmware/efi/vars.c
+index 0012331..d3b7513 100644
+--- a/drivers/firmware/efi/vars.c
++++ b/drivers/firmware/efi/vars.c
+@@ -419,8 +419,7 @@ static void dup_variable_bug(efi_char16_t *str16, efi_guid_t *vendor_guid,
+  * Returns 0 on success, or a kernel error code on failure.
+  */
+ int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
+-		void *data, bool atomic, bool duplicates,
+-		struct list_head *head)
++		void *data, bool duplicates, struct list_head *head)
+ {
+ 	const struct efivar_operations *ops = __efivars->ops;
+ 	unsigned long variable_name_size = 1024;
+@@ -450,7 +449,7 @@ int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
+ 						&vendor_guid);
+ 		switch (status) {
+ 		case EFI_SUCCESS:
+-			if (!atomic)
++			if (duplicates)
+ 				spin_unlock_irq(&__efivars->lock);
+ 
+ 			variable_name_size = var_name_strnsize(variable_name,
+@@ -465,21 +464,19 @@ int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
+ 			 * and may end up looping here forever.
+ 			 */
+ 			if (duplicates &&
+-			    variable_is_present(variable_name, &vendor_guid, head)) {
++			    variable_is_present(variable_name, &vendor_guid,
++						head)) {
+ 				dup_variable_bug(variable_name, &vendor_guid,
+ 						 variable_name_size);
+-				if (!atomic)
+-					spin_lock_irq(&__efivars->lock);
+-
+ 				status = EFI_NOT_FOUND;
+-				break;
++			} else {
++				err = func(variable_name, vendor_guid,
++					   variable_name_size, data);
++				if (err)
++					status = EFI_NOT_FOUND;
+ 			}
+ 
+-			err = func(variable_name, vendor_guid, variable_name_size, data);
+-			if (err)
+-				status = EFI_NOT_FOUND;
+-
+-			if (!atomic)
++			if (duplicates)
+ 				spin_lock_irq(&__efivars->lock);
+ 
+ 			break;
+diff --git a/fs/efivarfs/super.c b/fs/efivarfs/super.c
+index 553c5d2..9cb54a3 100644
+--- a/fs/efivarfs/super.c
++++ b/fs/efivarfs/super.c
+@@ -216,8 +216,7 @@ static int efivarfs_fill_super(struct super_block *sb, void *data, int silent)
+ 
+ 	INIT_LIST_HEAD(&efivarfs_list);
+ 
+-	err = efivar_init(efivarfs_callback, (void *)sb, false,
+-			  true, &efivarfs_list);
++	err = efivar_init(efivarfs_callback, (void *)sb, true, &efivarfs_list);
+ 	if (err)
+ 		__efivar_entry_iter(efivarfs_destroy, &efivarfs_list, NULL, NULL);
+ 
+diff --git a/include/linux/efi.h b/include/linux/efi.h
+index aa36fb8..df7acb5 100644
+--- a/include/linux/efi.h
++++ b/include/linux/efi.h
+@@ -1336,8 +1336,7 @@ int efivars_unregister(struct efivars *efivars);
+ struct kobject *efivars_kobject(void);
+ 
+ int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
+-		void *data, bool atomic, bool duplicates,
+-		struct list_head *head);
++		void *data, bool duplicates, struct list_head *head);
+ 
+ void efivar_entry_add(struct efivar_entry *entry, struct list_head *head);
+ void efivar_entry_remove(struct efivar_entry *entry);
+-- 
+2.1.4
+

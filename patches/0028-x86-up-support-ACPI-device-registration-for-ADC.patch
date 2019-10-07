@@ -1,0 +1,91 @@
+From 52c7a644c82b8c21f9c117b0ab0f8a56e709730d Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Thu, 26 May 2016 23:59:02 +0100
+Subject: [PATCH] x86/up: support ACPI device registration for ADC
+
+With the latest BIOS for the V0.4 UP Board, the ADC is now registered
+as an ACPI device.  This means that an ADC device should no longer be
+registered by the UP platform driver, and the ACPI device ID should
+be used for pin map association.
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/platform/x86/up_board.c | 31 ++++++++++++++++++++++++++-----
+ 1 file changed, 26 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/platform/x86/up_board.c b/drivers/platform/x86/up_board.c
+index 87e35e7..14e1a34 100644
+--- a/drivers/platform/x86/up_board.c
++++ b/drivers/platform/x86/up_board.c
+@@ -164,7 +164,7 @@ static struct pinctrl_map up_pinmux_maps_v0_4[] __initdata = {
+ 	UP_PIN_MAP_MUX_GROUP("80862288:00", "up-pinctrl", "pwm0"),
+ 	UP_PIN_MAP_MUX_GROUP("80862288:01", "up-pinctrl", "pwm1"),
+ 	UP_PIN_MAP_MUX_GROUP("8086228E:01", "up-pinctrl", "spi2"),
+-	UP_PIN_MAP_MUX_GROUP("2-0054",      "up-pinctrl", "adc0"),
++	UP_PIN_MAP_MUX_GROUP("i2c-ADC081C:00", "up-pinctrl", "adc0"),
+ 
+ 	UP_PIN_MAP_MUX_GROUP("8086228A:00", "INT33FF:00", "uart1"),
+ 	UP_PIN_MAP_MUX_GROUP("808622C1:00", "INT33FF:00", "i2c0"),
+@@ -211,10 +211,14 @@ static struct i2c_board_info up_i2c_devices_v0_3[] __initdata = {
+ 	},
+ };
+ 
+-static struct regulator_consumer_supply vref3v3_consumers[] = {
++static struct regulator_consumer_supply vref3v3_consumers_v0_3[] = {
+ 	REGULATOR_SUPPLY("vref", "2-0054"),
+ };
+ 
++static struct regulator_consumer_supply vref3v3_consumers_v0_4[] = {
++	REGULATOR_SUPPLY("vref", "i2c-ADC081C:00"),
++};
++
+ static struct spi_board_info up_spidev_info __initdata = {
+ 	.modalias	= "spidev",
+ 	.bus_num	= UP_BOARD_SPIDEV_BUS_NUM,
+@@ -241,8 +245,8 @@ up_board_init_devices_v0_3(void)
+ 	int ret;
+ 
+ 	vreg = regulator_register_always_on(0, "fixed-3.3V",
+-					    vref3v3_consumers,
+-					    ARRAY_SIZE(vref3v3_consumers),
++					    vref3v3_consumers_v0_3,
++					    ARRAY_SIZE(vref3v3_consumers_v0_3),
+ 					    3300000);
+ 	if (!vreg) {
+ 		pr_err("Failed to register UP Board ADC vref regulator");
+@@ -259,6 +263,23 @@ up_board_init_devices_v0_3(void)
+ 	return 0;
+ }
+ 
++static int __init
++up_board_init_devices_v0_4(void)
++{
++	struct platform_device *vreg;
++
++	vreg = regulator_register_always_on(0, "fixed-3.3V",
++					    vref3v3_consumers_v0_4,
++					    ARRAY_SIZE(vref3v3_consumers_v0_4),
++					    3300000);
++	if (!vreg) {
++		pr_err("Failed to register UP Board ADC vref regulator");
++		return -ENODEV;
++	}
++
++	return 0;
++}
++
+ static struct up_board_info up_board_info_v0_1 = {
+ 	.pinmux_maps = up_pinmux_maps_v0_1,
+ 	.num_pinmux_maps = ARRAY_SIZE(up_pinmux_maps_v0_1),
+@@ -279,7 +300,7 @@ static struct up_board_info up_board_info_v0_3 = {
+ static struct up_board_info up_board_info_v0_4 = {
+ 	.pinmux_maps = up_pinmux_maps_v0_4,
+ 	.num_pinmux_maps = ARRAY_SIZE(up_pinmux_maps_v0_4),
+-	.init_devices = up_board_init_devices_v0_3,
++	.init_devices = up_board_init_devices_v0_4,
+ };
+ 
+ static const struct dmi_system_id up_board_id_table[] = {
+-- 
+2.8.2
+

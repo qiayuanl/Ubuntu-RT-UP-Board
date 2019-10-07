@@ -1,0 +1,77 @@
+From 0496646328aa756d1afdb6ba0d493d272b1f0b27 Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Fri, 29 Jan 2016 16:56:42 +0000
+Subject: [PATCH 13/23] pinctrl: cherryview: add handlers for
+ pin_config_group_get/set
+
+Pin config get/set handlers for pin groups were previously not
+implemented by this driver.  The pin_config_group_set is
+particularly useful for applying a common config setting to all
+pins in a specified group with a single call, without the caller
+needing to reference each individual pin by name.
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/pinctrl/intel/pinctrl-cherryview.c | 42 ++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/drivers/pinctrl/intel/pinctrl-cherryview.c b/drivers/pinctrl/intel/pinctrl-cherryview.c
+index c086c1a..00ef0be 100644
+--- a/drivers/pinctrl/intel/pinctrl-cherryview.c
++++ b/drivers/pinctrl/intel/pinctrl-cherryview.c
+@@ -1169,10 +1169,52 @@ static int chv_config_set(struct pinctrl_dev *pctldev, unsigned pin,
+ 	return 0;
+ }
+ 
++static int chv_config_group_get(struct pinctrl_dev *pctldev,
++				unsigned int group,
++				unsigned long *config)
++{
++	const unsigned *pins;
++	unsigned npins;
++	int ret;
++
++	ret = chv_get_group_pins(pctldev, group, &pins, &npins);
++	if (ret)
++		return ret;
++
++	ret = chv_config_get(pctldev, pins[0], config);
++	if (ret)
++		return ret;
++
++	return 0;
++}
++
++static int chv_config_group_set(struct pinctrl_dev *pctldev,
++				unsigned group, unsigned long *configs,
++				unsigned num_configs)
++{
++	const unsigned *pins;
++	unsigned npins;
++	int i, ret;
++
++	ret = chv_get_group_pins(pctldev, group, &pins, &npins);
++	if (ret)
++		return ret;
++
++	for (i = 0; i < npins; i++) {
++		ret = chv_config_set(pctldev, pins[i], configs, num_configs);
++		if (ret)
++			return ret;
++	}
++
++	return 0;
++}
++
+ static const struct pinconf_ops chv_pinconf_ops = {
+ 	.is_generic = true,
+ 	.pin_config_set = chv_config_set,
+ 	.pin_config_get = chv_config_get,
++	.pin_config_group_get = chv_config_group_get,
++	.pin_config_group_set = chv_config_group_set,
+ };
+ 
+ static struct pinctrl_desc chv_pinctrl_desc = {
+-- 
+2.8.0
+

@@ -1,0 +1,87 @@
+From 119aef64163e21fbbf6b12063febf7c5586c2abf Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Wed, 13 Jan 2016 17:50:07 +0000
+Subject: [PATCH 07/23] x86/up: register spidev device by default on UP Board
+ SPI bus 2-0
+
+Register a spidev device on UP Board SPI bus #2 chip-select 0 to
+allow user-space applications to access to SPI devices connected
+on the external I/O pin header
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/platform/x86/up_board.c | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/drivers/platform/x86/up_board.c b/drivers/platform/x86/up_board.c
+index 73eeb4e..e9d16b1 100644
+--- a/drivers/platform/x86/up_board.c
++++ b/drivers/platform/x86/up_board.c
+@@ -23,12 +23,16 @@
+ #include <linux/pinctrl/machine.h>
+ #include <linux/pinctrl/pinconf-generic.h>
+ #include <linux/i2c.h>
++#include <linux/spi/spi.h>
+ #include <linux/platform_data/pca953x.h>
+ 
+ #define UP_BOARD_GPIO_EXP_I2C_BUS 5
+ #define UP_BOARD_GPIO_EXP0_BASE   32
+ #define UP_BOARD_GPIO_EXP1_BASE   48
+ 
++#define UP_BOARD_SPIDEV_BUS_NUM 2
++#define UP_BOARD_SPIDEV_MAX_CLK 25000000
++
+ struct up_board_info {
+ 	struct pinctrl_map *pinmux_maps;
+ 	unsigned num_pinmux_maps;
+@@ -36,6 +40,10 @@ struct up_board_info {
+ 	unsigned num_i2c_devices;
+ };
+ 
++static bool spidev0 = true;
++module_param(spidev0, bool, S_IRUGO);
++MODULE_PARM_DESC(spidev0, "register a spidev device on SPI bus 2-0");
++
+ static unsigned long i2c_pullup_conf[] = {
+ 	PIN_CONF_PACKED(PIN_CONFIG_BIAS_PULL_UP, 5000),
+ };
+@@ -102,6 +110,13 @@ static struct i2c_board_info up_i2c_devices_v0_2[] __initdata = {
+ 	},
+ };
+ 
++static struct spi_board_info up_spidev0_info __initdata = {
++	.modalias	= "spidev",
++	.bus_num	= UP_BOARD_SPIDEV_BUS_NUM,
++	.chip_select	= 0,
++	.max_speed_hz   = UP_BOARD_SPIDEV_MAX_CLK,
++};
++
+ static struct up_board_info up_board_info_v0_1 = {
+ 	.pinmux_maps = up_pinmux_maps_v0_1,
+ 	.num_pinmux_maps = ARRAY_SIZE(up_pinmux_maps_v0_1),
+@@ -177,6 +192,14 @@ up_board_init(void)
+ 		}
+ 	}
+ 
++	if (spidev0) {
++		ret = spi_register_board_info(&up_spidev0_info, 1);
++		if (ret) {
++			pr_err("Failed to register UP Board spidev0 device");
++			goto fail_spidev0_register;
++		}
++	}
++
+ 	/* Create a virtual device to manage the UP Board GPIO pin header */
+ 	up_pinctrl_dev = platform_device_alloc("up-pinctrl", -1);
+ 	if (!up_pinctrl_dev) {
+@@ -192,6 +215,7 @@ up_board_init(void)
+ fail_pinctrl_dev_add:
+ 	platform_device_put(up_pinctrl_dev);
+ fail_pinctrl_dev_alloc:
++fail_spidev0_register:
+ fail_i2c_register:
+ fail_pinctrl_reg:
+ 	return ret;
+-- 
+2.8.0
+

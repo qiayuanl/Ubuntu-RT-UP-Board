@@ -1,0 +1,36 @@
+From de16d55206c5ce82ad44590b01718fbe2323853c Mon Sep 17 00:00:00 2001
+From: Andy Shevchenko <andriy.shevchenko@linux.intel.com>
+Date: Fri, 4 Dec 2015 23:49:19 +0200
+Subject: [PATCH 4/6] ACPI / LPSS: allow to use specific PM domain during
+ ->probe()
+
+This is an amendment to previously pushed commit 01ac170ba29a (ACPI / LPSS:
+allow to use specific PM domain during ->probe()). We can't assign anything to
+the platform device on ADD_DEVICE stage since it might be changed during
+unbound / bind cycle.
+
+Signed-off-by: Andy Shevchenko <andriy.shevchenko@linux.intel.com>
+Signed-off-by: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
+---
+ drivers/acpi/acpi_lpss.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/acpi/acpi_lpss.c b/drivers/acpi/acpi_lpss.c
+index da0e276..6263939 100644
+--- a/drivers/acpi/acpi_lpss.c
++++ b/drivers/acpi/acpi_lpss.c
+@@ -705,9 +705,10 @@ static int acpi_lpss_platform_notify(struct notifier_block *nb,
+ 	}
+ 
+ 	switch (action) {
+-	case BUS_NOTIFY_BOUND_DRIVER:
++	case BUS_NOTIFY_BIND_DRIVER:
+ 		pdev->dev.pm_domain = &acpi_lpss_pm_domain;
+ 		break;
++	case BUS_NOTIFY_DRIVER_NOT_BOUND:
+ 	case BUS_NOTIFY_UNBOUND_DRIVER:
+ 		pdev->dev.pm_domain = NULL;
+ 		break;
+-- 
+2.7.4
+

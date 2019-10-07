@@ -1,0 +1,69 @@
+From a45c3d971bee51f059ac0430d50c213343c88f58 Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Fri, 29 Jan 2016 14:02:01 +0000
+Subject: [PATCH] pinctrl: cherryview: add option to set open-drain pin config
+
+On some CHV platforms, we need an option to configure the
+open-drain setting for these pins.  This adds support for the
+PIN_CONFIG_DRIVE_PUSH_PULL and PIN_CONFIG_DRIVE_OPEN_DRAIN to
+disable/enable open-drain mode for a specific pin.
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/pinctrl/intel/pinctrl-cherryview.c | 33 ++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/drivers/pinctrl/intel/pinctrl-cherryview.c b/drivers/pinctrl/intel/pinctrl-cherryview.c
+index 4e37759..e069f21 100644
+--- a/drivers/pinctrl/intel/pinctrl-cherryview.c
++++ b/drivers/pinctrl/intel/pinctrl-cherryview.c
+@@ -1110,6 +1110,27 @@ static int chv_config_set_pull(struct chv_pinctrl *pctrl, unsigned pin,
+ 	return 0;
+ }
+ 
++static int chv_config_set_oden(struct chv_pinctrl *pctrl, unsigned pin,
++			       bool enable)
++{
++	void __iomem *reg = chv_padreg(pctrl, pin, CHV_PADCTRL1);
++	unsigned long flags;
++	u32 ctrl1;
++
++	raw_spin_lock_irqsave(&chv_lock, flags);
++	ctrl1 = readl(reg);
++
++	if (enable)
++		ctrl1 |= CHV_PADCTRL1_ODEN;
++	else
++		ctrl1 &= ~CHV_PADCTRL1_ODEN;
++
++	chv_writel(ctrl1, reg);
++	raw_spin_unlock_irqrestore(&chv_lock, flags);
++
++	return 0;
++}
++
+ static int chv_config_set(struct pinctrl_dev *pctldev, unsigned pin,
+ 			  unsigned long *configs, unsigned nconfigs)
+ {
+@@ -1134,6 +1155,18 @@ static int chv_config_set(struct pinctrl_dev *pctldev, unsigned pin,
+ 				return ret;
+ 			break;
+ 
++		case PIN_CONFIG_DRIVE_PUSH_PULL:
++			ret = chv_config_set_oden(pctrl, pin, false);
++			if (ret)
++				return ret;
++			break;
++
++		case PIN_CONFIG_DRIVE_OPEN_DRAIN:
++			ret = chv_config_set_oden(pctrl, pin, true);
++			if (ret)
++				return ret;
++			break;
++
+ 		default:
+ 			return -ENOTSUPP;
+ 		}
+-- 
+1.9.1
+

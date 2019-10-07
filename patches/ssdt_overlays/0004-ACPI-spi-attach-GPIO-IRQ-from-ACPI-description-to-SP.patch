@@ -1,0 +1,37 @@
+From b81c5c2559dddd5817f2af969931c5d0fa3b6c33 Mon Sep 17 00:00:00 2001
+From: Christophe RICARD <christophe.ricard@gmail.com>
+Date: Wed, 23 Dec 2015 23:25:35 +0100
+Subject: [PATCH 03/11] ACPI / spi: attach GPIO IRQ from ACPI description to
+ SPI device
+
+spi->irq was ignoring GpioInt property setting it to -1.
+acpi_dev_gpio_irq_get returns and configure the slave IRQ according to
+the ACPI slave node description.
+
+It is now inline with devicetree behavior.
+
+Acked-by: Mark Brown <broonie@kernel.org>
+Signed-off-by: Christophe Ricard <christophe-h.ricard@st.com>
+Acked-by: Mika Westerberg <mika.westerberg@linux.intel.com>
+Signed-off-by: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
+---
+ drivers/spi/spi.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/spi/spi.c b/drivers/spi/spi.c
+index 19659c4..dd1e7ec 100644
+--- a/drivers/spi/spi.c
++++ b/drivers/spi/spi.c
+@@ -1643,6 +1643,9 @@ static acpi_status acpi_spi_add_device(acpi_handle handle, u32 level,
+ 		return AE_OK;
+ 	}
+ 
++	if (spi->irq < 0)
++		spi->irq = acpi_dev_gpio_irq_get(adev, 0);
++
+ 	adev->power.flags.ignore_parent = true;
+ 	strlcpy(spi->modalias, acpi_device_hid(adev), sizeof(spi->modalias));
+ 	if (spi_add_device(spi)) {
+-- 
+2.1.4
+

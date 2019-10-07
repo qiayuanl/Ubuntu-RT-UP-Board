@@ -1,0 +1,40 @@
+From 80cb72d909f846b213b4ce9672f3eb4fd6df5f4f Mon Sep 17 00:00:00 2001
+From: Crestez Dan Leonard <leonard.crestez@intel.com>
+Date: Wed, 13 Jul 2016 14:53:41 +0300
+Subject: [PATCH 2/3] acpi i2c: Initialize info.type from of_compatible
+
+When using devicetree i2c_board_info.type is set to the compatible
+string with the vendor prefix removed. For I2C devices described via
+ACPI the i2c_board_info.type string is set to the ACPI device name. When
+using ACPI and DT ids this string ends up something like "PRP0001:00".
+
+If the of_compatible property is present try to use that instead. This
+makes it easier to instantiate i2c drivers through ACPI with DT ids.
+
+Signed-off-by: Crestez Dan Leonard <leonard.crestez@intel.com>
+---
+ drivers/i2c/i2c-core.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/i2c/i2c-core.c b/drivers/i2c/i2c-core.c
+index 283a4ad..424467d 100644
+--- a/drivers/i2c/i2c-core.c
++++ b/drivers/i2c/i2c-core.c
+@@ -177,7 +177,13 @@ static int acpi_i2c_get_info(struct acpi_device *adev,
+ 
+ 	acpi_dev_free_resource_list(&resource_list);
+ 
+-	strlcpy(info->type, dev_name(&adev->dev), sizeof(info->type));
++	if (adev->data.of_compatible) {
++		ret = acpi_of_modalias(adev, info->type, sizeof(info->type));
++		if (ret)
++			return -EINVAL;
++	} else {
++		strlcpy(info->type, dev_name(&adev->dev), sizeof(info->type));
++	}
+ 
+ 	return 0;
+ }
+-- 
+2.1.4
+

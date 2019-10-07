@@ -1,0 +1,78 @@
+From 3a66be53e31662c3baddadde9c1d678d3744788e Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Sun, 10 Jan 2016 15:32:27 +0000
+Subject: [PATCH 06/23] i2c: designware-platdrv: add ACPI method query to get
+ default bus speed
+
+On some platforms, the I2C bus speed mode for some ports needs to differ from
+the default 400kHz speed set by this driver.
+This change allows the speed to be specified per port by the BIOS through
+an ACPI method named "FREQ".
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/i2c/busses/i2c-designware-platdrv.c | 27 ++++++++++++++++++++++++---
+ 1 file changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-designware-platdrv.c b/drivers/i2c/busses/i2c-designware-platdrv.c
+index 7718fae..e0d508e 100644
+--- a/drivers/i2c/busses/i2c-designware-platdrv.c
++++ b/drivers/i2c/busses/i2c-designware-platdrv.c
+@@ -90,7 +90,26 @@ static void dw_i2c_acpi_params(struct platform_device *pdev, char method[],
+ 	kfree(buf.pointer);
+ }
+ 
+-static int dw_i2c_acpi_configure(struct platform_device *pdev)
++static void dw_i2c_acpi_freq_param(struct platform_device *pdev, u32 *freq)
++{
++	struct acpi_buffer buf = { ACPI_ALLOCATE_BUFFER };
++	acpi_handle handle = ACPI_HANDLE(&pdev->dev);
++	union acpi_object *obj;
++
++	if (ACPI_FAILURE(acpi_evaluate_object(handle, "FREQ", NULL, &buf)))
++		return;
++
++	obj = (union acpi_object *)buf.pointer;
++	if (obj->type == ACPI_TYPE_PACKAGE && obj->package.count == 1) {
++		const union acpi_object *objs = obj->package.elements;
++
++		*freq = (u32)objs[0].integer.value;
++	}
++
++	kfree(buf.pointer);
++}
++
++static int dw_i2c_acpi_configure(struct platform_device *pdev, u32 *freq)
+ {
+ 	struct dw_i2c_dev *dev = platform_get_drvdata(pdev);
+ 	const struct acpi_device_id *id;
+@@ -115,6 +134,8 @@ static int dw_i2c_acpi_configure(struct platform_device *pdev)
+ 	dw_i2c_acpi_params(pdev, "SSCN", &dev->ss_hcnt, &dev->ss_lcnt, NULL);
+ 	dw_i2c_acpi_params(pdev, "FMCN", &dev->fs_hcnt, &dev->fs_lcnt,
+ 			   &dev->sda_hold_time);
++	/* Try to get default speed mode from an ACPI method if it exists */
++	dw_i2c_acpi_freq_param(pdev, freq);
+ 
+ 	id = acpi_match_device(pdev->dev.driver->acpi_match_table, &pdev->dev);
+ 	if (id && id->driver_data)
+@@ -135,7 +156,7 @@ static const struct acpi_device_id dw_i2c_acpi_match[] = {
+ };
+ MODULE_DEVICE_TABLE(acpi, dw_i2c_acpi_match);
+ #else
+-static inline int dw_i2c_acpi_configure(struct platform_device *pdev)
++static inline int dw_i2c_acpi_configure(struct platform_device *pdev, u32 *freq)
+ {
+ 	return -ENODEV;
+ }
+@@ -171,7 +192,7 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
+ 	clk_freq = 400000;
+ 
+ 	if (has_acpi_companion(&pdev->dev)) {
+-		dw_i2c_acpi_configure(pdev);
++		dw_i2c_acpi_configure(pdev, &clk_freq);
+ 	} else if (pdev->dev.of_node) {
+ 		of_property_read_u32(pdev->dev.of_node,
+ 					"i2c-sda-hold-time-ns", &ht);
+-- 
+2.8.0
+

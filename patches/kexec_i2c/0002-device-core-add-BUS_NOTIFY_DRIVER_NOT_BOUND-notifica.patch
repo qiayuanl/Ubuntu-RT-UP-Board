@@ -1,0 +1,78 @@
+From 14b6257a5f3dca3817b0826cb32967e3c2b935c8 Mon Sep 17 00:00:00 2001
+From: Andy Shevchenko <andriy.shevchenko@linux.intel.com>
+Date: Fri, 4 Dec 2015 23:49:17 +0200
+Subject: [PATCH 2/6] device core: add BUS_NOTIFY_DRIVER_NOT_BOUND notification
+
+The users of BUS_NOTIFY_BIND_DRIVER have no chance to do any cleanup in case of
+a probe failure. In the result there might be problems, such as some resources
+that had been allocated will continue to be allocated and therefore lead to a
+resource leak.
+
+Introduce a new notification to inform the subscriber that ->probe() failed. Do
+the same in case of failed device_bind_driver() call.
+
+Signed-off-by: Andy Shevchenko <andriy.shevchenko@linux.intel.com>
+Acked-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Signed-off-by: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
+---
+ drivers/base/dd.c      | 10 ++++++++--
+ include/linux/device.h |  1 +
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/base/dd.c b/drivers/base/dd.c
+index a641cf3..0369704 100644
+--- a/drivers/base/dd.c
++++ b/drivers/base/dd.c
+@@ -268,6 +268,9 @@ int device_bind_driver(struct device *dev)
+ 	ret = driver_sysfs_add(dev);
+ 	if (!ret)
+ 		driver_bound(dev);
++	else if (dev->bus)
++		blocking_notifier_call_chain(&dev->bus->p->bus_notifier,
++					     BUS_NOTIFY_DRIVER_NOT_BOUND, dev);
+ 	return ret;
+ }
+ EXPORT_SYMBOL_GPL(device_bind_driver);
+@@ -290,7 +293,7 @@ static int really_probe(struct device *dev, struct device_driver *drv)
+ 	/* If using pinctrl, bind pins now before probing */
+ 	ret = pinctrl_bind_pins(dev);
+ 	if (ret)
+-		goto probe_failed;
++		goto pinctrl_bind_failed;
+ 
+ 	if (driver_sysfs_add(dev)) {
+ 		printk(KERN_ERR "%s: driver_sysfs_add(%s) failed\n",
+@@ -334,6 +337,10 @@ static int really_probe(struct device *dev, struct device_driver *drv)
+ 	goto done;
+ 
+ probe_failed:
++	if (dev->bus)
++		blocking_notifier_call_chain(&dev->bus->p->bus_notifier,
++					     BUS_NOTIFY_DRIVER_NOT_BOUND, dev);
++pinctrl_bind_failed:
+ 	devres_release_all(dev);
+ 	driver_sysfs_remove(dev);
+ 	dev->driver = NULL;
+@@ -701,7 +708,6 @@ static void __device_release_driver(struct device *dev)
+ 			blocking_notifier_call_chain(&dev->bus->p->bus_notifier,
+ 						     BUS_NOTIFY_UNBOUND_DRIVER,
+ 						     dev);
+-
+ 	}
+ }
+ 
+diff --git a/include/linux/device.h b/include/linux/device.h
+index b8f411b..f627ba2 100644
+--- a/include/linux/device.h
++++ b/include/linux/device.h
+@@ -191,6 +191,7 @@ extern int bus_unregister_notifier(struct bus_type *bus,
+ 						      unbound */
+ #define BUS_NOTIFY_UNBOUND_DRIVER	0x00000007 /* driver is unbound
+ 						      from the device */
++#define BUS_NOTIFY_DRIVER_NOT_BOUND	0x00000008 /* driver fails to be bound */
+ 
+ extern struct kset *bus_get_kset(struct bus_type *bus);
+ extern struct klist *bus_get_device_klist(struct bus_type *bus);
+-- 
+2.7.4
+

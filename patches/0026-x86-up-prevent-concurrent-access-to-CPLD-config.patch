@@ -1,0 +1,66 @@
+From 8a08f3932573f1e5f0e9574376f06d51d90a024b Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Mon, 16 May 2016 16:33:38 +0100
+Subject: [PATCH] x86: up: prevent concurrent access to CPLD config
+
+Add a spinlock to prevent concurrent access to the CPLD configuration
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/platform/x86/up_board_pinctrl.c | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/platform/x86/up_board_pinctrl.c b/drivers/platform/x86/up_board_pinctrl.c
+index fdd7fa1..549c654 100644
+--- a/drivers/platform/x86/up_board_pinctrl.c
++++ b/drivers/platform/x86/up_board_pinctrl.c
+@@ -99,6 +99,7 @@ struct up_cpld_info {
+ 	unsigned dir_reg_size;
+ 	struct up_cpld_led_info *leds;
+ 	unsigned num_leds;
++	spinlock_t lock;
+ };
+ 
+ struct up_board_info {
+@@ -547,18 +548,25 @@ static int cpld_configure(struct up_cpld_info *cpld)
+ static int cpld_set_value(struct up_cpld_info *cpld, unsigned int offset,
+ 			  int value)
+ {
+-	u64 old_regval = cpld->dir_reg;
++	u64 old_regval;
++	int ret = 0;
++
++	spin_lock(&cpld->lock);
++
++	old_regval = cpld->dir_reg;
+ 
+ 	if (value)
+ 		cpld->dir_reg |= 1ULL << offset;
+ 	else
+ 		cpld->dir_reg &= ~(1ULL << offset);
+ 
++	/* Only update the CPLD register if it has changed */
+ 	if (cpld->dir_reg != old_regval)
+-		return cpld_configure(cpld);
++		ret = cpld_configure(cpld);
+ 
+-	/* No change in CPLD register */
+-	return 0;
++	spin_unlock(&cpld->lock);
++
++	return ret;
+ }
+ 
+ static int up_pincfg_set(struct up_board_info *board, int offset, int value)
+@@ -614,6 +622,8 @@ static int up_gpio_pincfg_cpld(struct platform_device *pdev,
+ 	};
+ 	int i, ret;
+ 
++	spin_lock_init(&cpld->lock);
++
+ 	/* Initialise the CPLD config input GPIOs as outputs, initially low */
+ 	for (i = 0; i < ARRAY_SIZE(cpld_gpios); i++) {
+ 		struct up_soc_gpio_info *gpio_info = cpld_gpios[i];
+-- 
+2.8.2
+

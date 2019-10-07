@@ -1,0 +1,39 @@
+From a92fc4f58caf84f23d38ff35998f7eaeb50a97a0 Mon Sep 17 00:00:00 2001
+From: Dan O'Donovan <dan@emutex.com>
+Date: Thu, 21 Jan 2016 16:11:05 +0000
+Subject: [PATCH 09/23] x86/up: register pinctrl mappings before device driver
+ probing
+
+If a driver for a device in the pinctrl mapping is probed before
+the mapping is registered, the pinctrl driver won't be invoked
+to configure the pin mux for the device.  This can happen when
+drivers are built-in rather than loadable modules.
+
+By using the subsys_initcall() hook instead of module_init(),
+we ensure that we register the pinctrl mappings early enough
+before the device drivers are probed.
+
+Signed-off-by: Dan O'Donovan <dan@emutex.com>
+---
+ drivers/platform/x86/up_board.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/platform/x86/up_board.c b/drivers/platform/x86/up_board.c
+index e9d16b1..9864dd5 100644
+--- a/drivers/platform/x86/up_board.c
++++ b/drivers/platform/x86/up_board.c
+@@ -227,7 +227,10 @@ up_board_exit(void)
+ 	platform_device_unregister(up_pinctrl_dev);
+ }
+ 
+-module_init(up_board_init);
++/* Using subsys_initcall to ensure that pinctrl mappings are registered
++ * before corresponding devices are enumerated
++ */
++subsys_initcall(up_board_init);
+ module_exit(up_board_exit);
+ 
+ MODULE_AUTHOR("Dan O'Donovan <dan@emutex.com>");
+-- 
+2.8.0
+

@@ -1,0 +1,250 @@
+From 08f75c4fcaa824312b4f47c6ee16dfcad2cb8ba9 Mon Sep 17 00:00:00 2001
+From: Octavian Purdila <octavian.purdila@intel.com>
+Date: Fri, 8 Jul 2016 19:13:09 +0300
+Subject: [PATCH 06/11] acpi: add support for ACPI reconfiguration notifiers
+
+Add support for ACPI reconfiguration notifiers to allow subsystems to
+react to changes in the ACPI tables that happen after the initial
+enumeration. This is similar with the way dynamic device tree
+notifications work.
+
+The reconfigure notifications supported for now are device add and
+device remove.
+
+Since ACPICA allows only one table notification handler, this patch
+makes the table notifier function generic and moves it out of the
+sysfs specific code.
+
+Signed-off-by: Octavian Purdila <octavian.purdila@intel.com>
+Reviewed-by: Mika Westerberg <mika.westerberg@linux.intel.com>
+---
+ drivers/acpi/bus.c      |  9 +++++++
+ drivers/acpi/internal.h |  3 +++
+ drivers/acpi/scan.c     | 68 ++++++++++++++++++++++++++++++++++++++++++++++++-
+ drivers/acpi/sysfs.c    |  6 ++---
+ include/linux/acpi.h    | 18 +++++++++++++
+ 5 files changed, 99 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/acpi/bus.c b/drivers/acpi/bus.c
+index a212cef..1eca69a 100644
+--- a/drivers/acpi/bus.c
++++ b/drivers/acpi/bus.c
+@@ -973,6 +973,13 @@ void __init acpi_subsystem_init(void)
+ 	}
+ }
+ 
++static acpi_status acpi_bus_table_handler(u32 event, void *table, void *context)
++{
++	acpi_scan_table_handler(event, table, context);
++
++	return acpi_sysfs_table_handler(event, table, context);
++}
++
+ static int __init acpi_bus_init(void)
+ {
+ 	int result;
+@@ -1014,6 +1021,8 @@ static int __init acpi_bus_init(void)
+ 	 * _PDC control method may load dynamic SSDT tables,
+ 	 * and we need to install the table handler before that.
+ 	 */
++	status = acpi_install_table_handler(acpi_bus_table_handler, NULL);
++
+ 	acpi_sysfs_init();
+ 
+ 	acpi_early_processor_set_pdc();
+diff --git a/drivers/acpi/internal.h b/drivers/acpi/internal.h
+index 11d87bf..6cab4f0 100644
+--- a/drivers/acpi/internal.h
++++ b/drivers/acpi/internal.h
+@@ -80,6 +80,9 @@ bool acpi_queue_hotplug_work(struct work_struct *work);
+ void acpi_device_hotplug(struct acpi_device *adev, u32 src);
+ bool acpi_scan_is_offline(struct acpi_device *adev, bool uevent);
+ 
++acpi_status acpi_sysfs_table_handler(u32 event, void *table, void *context);
++void acpi_scan_table_handler(u32 event, void *table, void *context);
++
+ /* --------------------------------------------------------------------------
+                      Device Node Initialization / Removal
+    -------------------------------------------------------------------------- */
+diff --git a/drivers/acpi/scan.c b/drivers/acpi/scan.c
+index d0875f7..1c7804a 100644
+--- a/drivers/acpi/scan.c
++++ b/drivers/acpi/scan.c
+@@ -486,6 +486,8 @@ static void acpi_device_del(struct acpi_device *device)
+ 	device_del(&device->dev);
+ }
+ 
++static BLOCKING_NOTIFIER_HEAD(acpi_reconfig_chain);
++
+ static LIST_HEAD(acpi_device_del_list);
+ static DEFINE_MUTEX(acpi_device_del_lock);
+ 
+@@ -506,6 +508,9 @@ static void acpi_device_del_work_fn(struct work_struct *work_not_used)
+ 
+ 		mutex_unlock(&acpi_device_del_lock);
+ 
++		blocking_notifier_call_chain(&acpi_reconfig_chain,
++					     ACPI_RECONFIG_DEVICE_REMOVE, adev);
++
+ 		acpi_device_del(adev);
+ 		/*
+ 		 * Drop references to all power resources that might have been
+@@ -1668,7 +1673,7 @@ static void acpi_default_enumeration(struct acpi_device *device)
+ 	bool is_spi_i2c_slave = false;
+ 
+ 	/*
+-	 * Do not enemerate SPI/I2C slaves as they will be enuerated by their
++	 * Do not enumerate SPI/I2C slaves as they will be enumerated by their
+ 	 * respective parents.
+ 	 */
+ 	INIT_LIST_HEAD(&resource_list);
+@@ -1678,6 +1683,9 @@ static void acpi_default_enumeration(struct acpi_device *device)
+ 	if (!is_spi_i2c_slave) {
+ 		acpi_create_platform_device(device);
+ 		acpi_device_set_enumerated(device);
++	} else {
++		blocking_notifier_call_chain(&acpi_reconfig_chain,
++					     ACPI_RECONFIG_DEVICE_ADD, device);
+ 	}
+ }
+ 
+@@ -1909,6 +1917,8 @@ static int acpi_bus_scan_fixed(void)
+ 	return result < 0 ? result : 0;
+ }
+ 
++static bool acpi_scan_initialized;
++
+ int __init acpi_scan_init(void)
+ {
+ 	int result;
+@@ -1952,6 +1962,8 @@ int __init acpi_scan_init(void)
+ 
+ 	acpi_update_all_gpes();
+ 
++	acpi_scan_initialized = true;
++
+  out:
+ 	mutex_unlock(&acpi_scan_lock);
+ 	return result;
+@@ -1995,3 +2007,57 @@ int __init __acpi_probe_device_table(struct acpi_probe_entry *ap_head, int nr)
+ 
+ 	return count;
+ }
++
++struct acpi_table_events_work {
++	struct work_struct work;
++	void *table;
++	u32 event;
++};
++
++static void acpi_table_events_fn(struct work_struct *work)
++{
++	struct acpi_table_events_work *tew;
++
++	tew = container_of(work, struct acpi_table_events_work, work);
++
++	if (tew->event == ACPI_TABLE_EVENT_LOAD) {
++		acpi_scan_lock_acquire();
++		acpi_bus_scan(ACPI_ROOT_OBJECT);
++		acpi_scan_lock_release();
++	}
++
++	kfree(tew);
++}
++
++void acpi_scan_table_handler(u32 event, void *table, void *context)
++{
++	struct acpi_table_events_work *tew;
++
++	if (!acpi_scan_initialized)
++		return;
++
++	if (event != ACPI_TABLE_EVENT_LOAD)
++		return;
++
++	tew = kmalloc(sizeof(*tew), GFP_KERNEL);
++	if (!tew)
++		return;
++
++	INIT_WORK(&tew->work, acpi_table_events_fn);
++	tew->table = table;
++	tew->event = event;
++
++	schedule_work(&tew->work);
++}
++
++int acpi_reconfig_notifier_register(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_register(&acpi_reconfig_chain, nb);
++}
++EXPORT_SYMBOL(acpi_reconfig_notifier_register);
++
++int acpi_reconfig_notifier_unregister(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_unregister(&acpi_reconfig_chain, nb);
++}
++EXPORT_SYMBOL(acpi_reconfig_notifier_unregister);
+diff --git a/drivers/acpi/sysfs.c b/drivers/acpi/sysfs.c
+index 0243d37..d132d66 100644
+--- a/drivers/acpi/sysfs.c
++++ b/drivers/acpi/sysfs.c
+@@ -378,8 +378,7 @@ static void acpi_table_attr_init(struct acpi_table_attr *table_attr,
+ 	return;
+ }
+ 
+-static acpi_status
+-acpi_sysfs_table_handler(u32 event, void *table, void *context)
++acpi_status acpi_sysfs_table_handler(u32 event, void *table, void *context)
+ {
+ 	struct acpi_table_attr *table_attr;
+ 
+@@ -452,9 +451,8 @@ static int acpi_tables_sysfs_init(void)
+ 
+ 	kobject_uevent(tables_kobj, KOBJ_ADD);
+ 	kobject_uevent(dynamic_tables_kobj, KOBJ_ADD);
+-	status = acpi_install_table_handler(acpi_sysfs_table_handler, NULL);
+ 
+-	return ACPI_FAILURE(status) ? -EINVAL : 0;
++	return 0;
+ err_dynamic_tables:
+ 	kobject_put(tables_kobj);
+ err:
+diff --git a/include/linux/acpi.h b/include/linux/acpi.h
+index 633ec22..a70c0cd 100644
+--- a/include/linux/acpi.h
++++ b/include/linux/acpi.h
+@@ -478,6 +478,14 @@ static inline void acpi_device_clear_enumerated(struct acpi_device *adev)
+ 	adev->flags.visited = false;
+ }
+ 
++enum acpi_reconfig_event  {
++	ACPI_RECONFIG_DEVICE_ADD = 0,
++	ACPI_RECONFIG_DEVICE_REMOVE,
++};
++
++int acpi_reconfig_notifier_register(struct notifier_block *nb);
++int acpi_reconfig_notifier_unregister(struct notifier_block *nb);
++
+ #else	/* !CONFIG_ACPI */
+ 
+ #define acpi_disabled 1
+@@ -631,6 +639,16 @@ static inline void acpi_device_clear_enumerated(struct acpi_device *adev)
+ {
+ }
+ 
++static inline int acpi_reconfig_notifier_register(struct notifier_block *nb)
++{
++	return -EINVAL;
++}
++
++static inline int acpi_reconfig_notifier_unregister(struct notifier_block *nb)
++{
++	return -EINVAL;
++}
++
+ #endif	/* !CONFIG_ACPI */
+ 
+ #ifdef CONFIG_ACPI
+-- 
+2.1.4
+
