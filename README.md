@@ -6,7 +6,7 @@ An [UP board](https://up-board.org/) Ubuntu **real-time** patched kernel (4.4.86
 Here's a compiled image for UP Board. Copy and paste following in your terminal:
 
 ```bash
-wget -c "https://github.com/QiayuanLiao/Ubuntu-RT-UP-Board/releases/download/UP-board-4.4.86-rt99/UP-board-4.4.86-rt99.deb.tar.xz" && tar -xvzf UP-board-4.4.86-rt99.deb.tar.xz
+wget -c "https://github.com/QiayuanLiao/Ubuntu-RT-UP-Board/releases/download/UP-board-4.4.86-rt99/UP-board-4.4.86-rt99.tar.xz" && tar -xvzf UP-board-4.4.86-rt99.tar.xz
 ```
 
 You are all set now! For the next step:
